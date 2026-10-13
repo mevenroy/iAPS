@@ -9,7 +9,7 @@ env:
 jobs:
   build:
     name: Build
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -17,31 +17,26 @@ jobs:
           submodules: recursive
           ref: ${{ env.TARGET_BRANCH }}
 
-      - name: Select Xcode version
+      - name: Build App
         run: |
-          XCODE=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode_15*.app /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          echo "Selecting $XCODE"
-          sudo xcode-select --switch "$XCODE/Contents/Developer"
-          xcodebuild -version
-
-      - name: Build Archive
-        run: |
-          mkdir -p build_output
-          xcodebuild archive \
+          xcodebuild build \
             -project FreeAPS.xcodeproj \
             -scheme FreeAPS \
             -destination "generic/platform=iOS" \
-            -archivePath build_output/FreeAPS.xcarchive \
+            -configuration Release \
+            -derivedDataPath build_output \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            CODE_SIGN_IDENTITY=""
 
       - name: Package IPA
         run: |
-          mkdir -p artifacts Payload
-          cp -R build_output/FreeAPS.xcarchive/Products/Applications/FreeAPS.app Payload/
-          zip -r artifacts/iAPS.ipa Payload
+          mkdir -p artifacts/Payload
+          APP_PATH=$(find build_output/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1)
+          echo "Found app at: $APP_PATH"
+          cp -R "$APP_PATH" artifacts/Payload/
+          cd artifacts
+          zip -r iAPS.ipa Payload
           rm -rf Payload
 
       - name: Upload IPA Artifact
