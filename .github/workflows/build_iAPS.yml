@@ -9,7 +9,7 @@ env:
 jobs:
   build:
     name: Build
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -17,26 +17,32 @@ jobs:
           submodules: recursive
           ref: ${{ env.TARGET_BRANCH }}
 
+      - name: Select Xcode 16
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+          xcodebuild -version
+
       - name: Build App
         run: |
           xcodebuild build \
             -project FreeAPS.xcodeproj \
             -scheme FreeAPS \
-            -destination "generic/platform=iOS" \
             -configuration Release \
+            -destination "generic/platform=iOS" \
             -derivedDataPath build_output \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
 
       - name: Package IPA
         run: |
           mkdir -p artifacts/Payload
-          APP_PATH=$(find build_output/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1)
+          APP_PATH=$(find build_output/Build/Products/Release-iphoneos -name "FreeAPS.app" -type d | head -n 1)
           echo "Found app at: $APP_PATH"
           cp -R "$APP_PATH" artifacts/Payload/
           cd artifacts
-          zip -r iAPS.ipa Payload
+          zip -qry iAPS.ipa Payload
           rm -rf Payload
 
       - name: Upload IPA Artifact
