@@ -3,7 +3,7 @@ run-name: Build iAPS (${{ github.ref_name }})
 on:
   workflow_dispatch:
 
-env:  
+env:
   TARGET_BRANCH: ${{ github.ref_name }}
 
 jobs:
@@ -17,20 +17,28 @@ jobs:
           submodules: recursive
           ref: ${{ env.TARGET_BRANCH }}
 
-      - name: Setup Xcode 16
+      - name: Show Xcode & SDK Info
         run: |
-          XCODE_PATH=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode.app 2>/dev/null | head -n 1)
-          echo "Xcode : $XCODE_PATH"
-          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
           xcodebuild -version
+          xcodebuild -showsdks
 
-      - name: Detach Watch App and Live Activity from Project
+      - name: Strip Watch and Widget Extensions
         run: |
-          # Supprime les références aux cibles Watch et Extensions dans le projet Xcode
-          sed -i '' '/FreeAPSWatch/d' FreeAPS.xcodeproj/project.pbxproj
-          sed -i '' '/LiveActivityExtension/d' FreeAPS.xcodeproj/project.pbxproj
+          python3 -c '
+          with open("FreeAPS.xcodeproj/project.pbxproj", "r") as f:
+              lines = f.readlines()
+          
+          # Filtrer les références aux cibles secondaires qui posent problème sans signature
+          filtered = [
+              line for line in lines 
+              if "FreeAPSWatch" not in line and "LiveActivityExtension" not in line
+          ]
+          
+          with open("FreeAPS.xcodeproj/project.pbxproj", "w") as f:
+              f.writelines(filtered)
+          '
 
-      - name: Build FreeAPS
+      - name: Compile iPhone App
         run: |
           xcodebuild build \
             -project FreeAPS.xcodeproj \
@@ -43,12 +51,12 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-      - name: Create IPA Package
+      - name: Package IPA
         run: |
           mkdir -p artifacts/Payload
-          APP_PATH=$(find build_output/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
+          APP_PATH=$(find build_output/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1 | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "Erreur : aucun .app généré"
+            echo "Erreur : binaire .app non généré"
             exit 1
           fi
           echo "Application trouvée : $APP_PATH"
@@ -57,7 +65,7 @@ jobs:
           zip -qry iAPS.ipa Payload
           rm -rf Payload
 
-      - name: Upload IPA
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: iAPS-IPA
