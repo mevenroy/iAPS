@@ -9,7 +9,7 @@ env:
 jobs:
   build:
     name: Build
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -17,41 +17,45 @@ jobs:
           submodules: recursive
           ref: ${{ env.TARGET_BRANCH }}
 
-      - name: Select Xcode 15/16 with iOS SDK
+      - name: Setup Xcode 16
         run: |
-          echo "Xcode versions disponibles :"
-          ls -d /Applications/Xcode*.app
-          XCODE=$(ls -d /Applications/Xcode_15.4.app /Applications/Xcode_16*.app /Applications/Xcode*.app 2>/dev/null | head -n 1)
-          echo "Selection de $XCODE"
-          sudo xcode-select -s "$XCODE/Contents/Developer"
+          XCODE_PATH=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode.app 2>/dev/null | head -n 1)
+          echo "Xcode retenu : $XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
           xcodebuild -version
-          xcodebuild -showsdks
 
-      - name: Build App
+      - name: Build FreeAPS
         run: |
           xcodebuild build \
             -project FreeAPS.xcodeproj \
             -scheme FreeAPS \
             -configuration Release \
-            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             -derivedDataPath build_output \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER=""
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            ENABLE_BITCODE=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
-      - name: Package IPA
+      - name: Create IPA Package
         run: |
           mkdir -p artifacts/Payload
-          APP_PATH=$(find build_output/Build/Products/Release-iphoneos -name "*.app" -type d | head -n 1)
-          echo "Dossier .app trouvé : $APP_PATH"
+          APP_PATH=$(find build_output/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Erreur : fichier .app introuvable"
+            exit 1
+          fi
+          echo "Dossier .app extrait : $APP_PATH"
           cp -R "$APP_PATH" artifacts/Payload/
           cd artifacts
           zip -qry iAPS.ipa Payload
           rm -rf Payload
 
-      - name: Upload IPA Artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: iAPS-IPA
           path: artifacts/iAPS.ipa
+          retention-days: 7
