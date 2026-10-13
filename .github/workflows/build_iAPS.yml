@@ -20,34 +20,33 @@ jobs:
       - name: Setup Xcode 16
         run: |
           XCODE_PATH=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode.app 2>/dev/null | head -n 1)
-          echo "Xcode retenu : $XCODE_PATH"
+          echo "Xcode : $XCODE_PATH"
           sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
           xcodebuild -version
 
-      - name: Build FreeAPS
+      - name: Build FreeAPS Target Only
         run: |
           xcodebuild build \
             -project FreeAPS.xcodeproj \
-            -scheme FreeAPS \
+            -target FreeAPS \
             -configuration Release \
-            -destination "generic/platform=iOS" \
+            -sdk iphoneos \
             -derivedDataPath build_output \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            ENABLE_BITCODE=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM=""
 
       - name: Create IPA Package
         run: |
           mkdir -p artifacts/Payload
           APP_PATH=$(find build_output/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "Erreur : fichier .app introuvable"
+            echo "Erreur : aucun .app généré"
             exit 1
           fi
-          echo "Dossier .app extrait : $APP_PATH"
+          echo "Application trouvée : $APP_PATH"
           cp -R "$APP_PATH" artifacts/Payload/
           cd artifacts
           zip -qry iAPS.ipa Payload
