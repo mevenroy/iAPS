@@ -24,15 +24,20 @@ jobs:
           sudo xcode-select -s "$XCODE_PATH/Contents/Developer"
           xcodebuild -version
 
-      - name: Build FreeAPS Target Only
+      - name: Detach Watch App and Live Activity from Project
+        run: |
+          # Supprime les références aux cibles Watch et Extensions dans le projet Xcode
+          sed -i '' '/FreeAPSWatch/d' FreeAPS.xcodeproj/project.pbxproj
+          sed -i '' '/LiveActivityExtension/d' FreeAPS.xcodeproj/project.pbxproj
+
+      - name: Build FreeAPS
         run: |
           xcodebuild build \
             -project FreeAPS.xcodeproj \
-            -target FreeAPS \
+            -scheme FreeAPS \
             -configuration Release \
-            -sdk iphoneos \
-            SYMROOT="$PWD/build_output" \
-            OBJROOT="$PWD/build_output/obj" \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build_output \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -41,7 +46,7 @@ jobs:
       - name: Create IPA Package
         run: |
           mkdir -p artifacts/Payload
-          APP_PATH=$(find "$PWD/build_output/Release-iphoneos" -maxdepth 1 -name "*.app" | head -n 1)
+          APP_PATH=$(find build_output/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
             echo "Erreur : aucun .app généré"
             exit 1
