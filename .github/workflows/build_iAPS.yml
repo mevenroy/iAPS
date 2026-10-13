@@ -4,72 +4,48 @@ on:
   workflow_dispatch:
 
 env:  
-  UPSTREAM_REPO: Artificial-Pancreas/iAPS
-  UPSTREAM_BRANCH: ${{ github.ref_name }}
   TARGET_BRANCH: ${{ github.ref_name }}
-  ALIVE_BRANCH: alive
 
 jobs:
   build:
     name: Build
     runs-on: macos-latest
-    permissions:
-      contents: write
     steps:
-      - name: Set special variables
-        env:
-          APP_IDENTIFIER_SECRET: ${{ secrets.APP_IDENTIFIER }}
-          APP_IDENTIFIER_VAR: ${{ vars.APP_IDENTIFIER }}
-          BUILD_GROUP_VAR: ${{ vars.BUILD_GROUP }}
-        run: |
-          APP_ID="${APP_IDENTIFIER_SECRET:-$APP_IDENTIFIER_VAR}"
-          if [ -n "$APP_ID" ]; then
-            echo "APP_IDENTIFIER=$APP_ID" >> "$GITHUB_ENV"
-          fi
-          if [ -n "$BUILD_GROUP_VAR" ]; then
-            echo "BUILD_GROUP=$BUILD_GROUP_VAR" >> "$GITHUB_ENV"
-          fi
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          ref: ${{ env.TARGET_BRANCH }}
 
       - name: Select Xcode version
         run: |
-          echo "Available Xcode versions:"
-          ls -d /Applications/Xcode*.app
-          XCODE=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode_15*.app | sort -V | tail -1)
-          if [ -z "$XCODE" ]; then
-            XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
-          fi
+          XCODE=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode_15*.app /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
           echo "Selecting $XCODE"
           sudo xcode-select --switch "$XCODE/Contents/Developer"
           xcodebuild -version
 
-      - name: Checkout Repo for building
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-          submodules: recursive
-          ref: ${{ env.TARGET_BRANCH }}
-
-      - name: Install Bundler 2.x
+      - name: Build Archive
         run: |
-          gem install bundler -v 2.7.2
-          echo "BUNDLER_VER=2.7.2" >> "$GITHUB_ENV"
+          mkdir -p build_output
+          xcodebuild archive \
+            -project FreeAPS.xcodeproj \
+            -scheme FreeAPS \
+            -destination "generic/platform=iOS" \
+            -archivePath build_output/FreeAPS.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-      - name: Install project dependencies
-        run: bundle _${{ env.BUNDLER_VER }}_ install
+      - name: Package IPA
+        run: |
+          mkdir -p artifacts Payload
+          cp -R build_output/FreeAPS.xcarchive/Products/Applications/FreeAPS.app Payload/
+          zip -r artifacts/iAPS.ipa Payload
+          rm -rf Payload
 
-      - name: Sync clock
-        run: sudo sntp -sS time.windows.com || true
-
-      - name: Fastlane Build & Archive
-        run: bundle _${{ env.BUNDLER_VER }}_ exec fastlane build_iAPS
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-
-      - name: Upload Build artifacts
-        if: always()
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
-          path: |
-            artifacts
-            buildlog
+          name: iAPS-IPA
+          path: artifacts/iAPS.ipa
